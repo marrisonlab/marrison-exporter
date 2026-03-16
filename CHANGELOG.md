@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2024-03-16
+
+### Added
+- **Sistema Cartella Fissa**: Implementazione critica per mantenere sempre la cartella `marrison-exporter` durante gli aggiornamenti
+- **Supporto Tag "v"**: Supporto completo per tag GitHub con prefisso "v" (es. v1.2.0)
+- **Normalizzazione Versioni**: Funzione `normalize_version()` per gestire formati con/ senza "v"
+- **Normalizzazione Slug**: Funzione `normalize_plugin_slug()` per gestire suffissi numerici
+- **Hook Upgrader Personalizzato**: `upgrader_source_selection` per controllo completo dell'installazione
+
+### Fixed
+- **CRITICAL**: Risolto problema fondamentale che poteva cambiare nome cartella durante aggiornamenti
+- **Compatibilità GitHub**: Supporto completo per tag con formato "v1.2.0"
+- **Stabilità Aggiornamenti**: Sistema robusto che garantisce cartella fissa
+- **Struttura Pacchetto**: Gestione automatica della struttura delle directory da GitHub
+
+### Technical
+- Implementato `fix_package_structure()` per ristrutturare pacchetti GitHub
+- Aggiunto controllo di integrità durante l'installazione
+- Sistema di spostamento file automatico per mantenere struttura coerente
+- Pulizia automatica cartelle temporanee dopo l'installazione
+
+### Security
+- Verifica rigorosa del plugin target durante l'installazione
+- Controllo integrità file principale `marrison-exporter.php`
+- Prevenzione installazione in cartelle errate
+
 ## [1.1.0] - 2024-03-16
 
 ### Added

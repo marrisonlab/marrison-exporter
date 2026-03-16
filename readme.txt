@@ -3,7 +3,7 @@ Contributors: marrison
 Tags: woocommerce, export, orders, csv, batch, memory, hpos
 Requires at least: 5.0
 Tested up to: 6.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -71,6 +71,14 @@ Il plugin permette di esportare le seguenti colonne:
 
 == Changelog ==
 
+= 1.2.0 =
+* **CRITICAL FIX**: Sistema cartella fissa per mantenere sempre `marrison-exporter` durante aggiornamenti
+* **GITHUB TAG SUPPORT**: Supporto completo per tag con prefisso "v" (es. v1.2.0)
+* **STABILITY UPDATE**: Sistema robusto che previene cambiamenti nome cartella
+* **INSTALLATION CONTROL**: Hook personalizzato per controllo completo processo installazione
+* **NORMALIZATION**: Funzioni per normalizzare versioni e slug di plugin
+* **SECURITY**: Verifica integrità durante installazione e prevenzione errori strutturali
+
 = 1.1.0 =
 * **NUOVA INTERFACCIA**: Design completamente rinnovato nello stile Marrison Custom Updater
 * **HPOS COMPATIBILITY**: Piena compatibilità con WooCommerce 9.0 e HPOS
@@ -89,8 +97,11 @@ Il plugin permette di esportare le seguenti colonne:
 
 == Upgrade Notice ==
 
+= 1.2.0 =
+**AGGIORNAMENTO CRITICO**: Risolve problema fondamentale che poteva cambiare nome cartella durante aggiornamenti. ALTAMENTE RACCOMANDATO per tutti gli utenti per garantire stabilità futura.
+
 = 1.1.0 =
-Aggiornamento importante con nuova interfaccia grafica, compatibilità HPOS e miglioramenti performance. Consigliato per tutti gli utenti.
+Aggiornamento importante con nuova interfaccia grafica, compatibilità HPOS e miglioramenti performance.
 
 == Screenshots ==
 
@@ -112,6 +123,12 @@ A: Sì, il plugin si aggiorna automaticamente quando vengono rilasciate nuove ve
 
 **Q: È compatibile con PHP 8.x?**
 A: Sì, il plugin richiede PHP 7.4+ e funziona perfettamente con PHP 8.x.
+
+**Q: La cartella del plugin cambia nome durante gli aggiornamenti?**
+A: **No!** La versione 1.2.0 introduce un sistema critico che mantiene sempre la cartella `marrison-exporter` fissa durante gli aggiornamenti.
+
+**Q: Posso usare tag GitHub con "v" (es. v1.2.0)?**
+A: Sì, il plugin supporta completamente sia `1.2.0` che `v1.2.0` nel readme e nelle release GitHub.
 
 == Support ==
 

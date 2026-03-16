@@ -3,7 +3,7 @@
  * Plugin Name: Marrison Exporter
  * Plugin URI: https://marrison.com/
  * Description: Plugin per esportare gli ordini di WooCommerce in formato CSV con selezione di date e colonne.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Marrison
  * Author URI: https://marrison.com/
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MARRISON_EXPORTER_VERSION', '1.1.0');
+define('MARRISON_EXPORTER_VERSION', '1.2.0');
 define('MARRISON_EXPORTER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MARRISON_EXPORTER_PLUGIN_URL', plugin_dir_url(__FILE__));
 

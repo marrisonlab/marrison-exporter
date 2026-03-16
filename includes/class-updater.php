@@ -9,6 +9,7 @@ if (!class_exists('Marrison_Exporter_Updater')) {
     class Marrison_Exporter_Updater {
         
         private $plugin_slug = 'marrison-exporter';
+        private $plugin_file = 'marrison-exporter/marrison-exporter.php';
         private $github_repo = 'marrisonlab/marrison-exporter';
         private $github_api_url = 'https://api.github.com/repos';
         private $cache_key = 'marrison_exporter_update_info';
@@ -20,6 +21,9 @@ if (!class_exists('Marrison_Exporter_Updater')) {
             add_action('admin_init', array($this, 'force_check_updates'));
             add_filter('plugin_action_links_' . plugin_basename(MARRISON_EXPORTER_PLUGIN_DIR . 'marrison-exporter.php'), array($this, 'add_force_check_link'), 10, 2);
             add_action('upgrader_process_complete', array($this, 'clear_update_cache'), 10, 2);
+            
+            // Hook personalizzato per gestire l'installazione mantenendo la cartella fissa
+            add_filter('upgrader_source_selection', array($this, 'fix_package_structure'), 10, 4);
         }
         
         /**
@@ -47,7 +51,7 @@ if (!class_exists('Marrison_Exporter_Updater')) {
                 $plugin_info->new_version = $latest_version;
                 $plugin_info->url = $release_info['html_url'];
                 $plugin_info->package = $release_info['zipball_url'];
-                $plugin_info->plugin = 'marrison-exporter/marrison-exporter.php';
+                $plugin_info->plugin = $this->plugin_file;
                 
                 $transient->response[$plugin_info->plugin] = $plugin_info;
             }
@@ -86,10 +90,45 @@ if (!class_exists('Marrison_Exporter_Updater')) {
                 return false;
             }
             
+            // Normalizza la versione rimuovendo la "v" se presente
+            if (isset($release_data['tag_name'])) {
+                $release_data['tag_name'] = $this->normalize_version($release_data['tag_name']);
+            }
+            
             // Cache per 1 ora
             set_transient($this->cache_key, $release_data, $this->cache_duration);
             
             return $release_data;
+        }
+        
+        /**
+         * Normalizza la versione rimuovendo la "v" iniziale se presente
+         * Supporta formati come: v1.1.0, v2.0, 1.1.0, 2.0
+         */
+        private function normalize_version($version) {
+            if (empty($version)) {
+                return '';
+            }
+            
+            // Rimuovi la "v" iniziale se presente
+            if (strpos($version, 'v') === 0) {
+                return substr($version, 1);
+            }
+            
+            return trim($version);
+        }
+        
+        /**
+         * Normalizza il nome della cartella plugin per il confronto
+         * Gestisce suffissi numerici come -1, -2, -1.1, ecc.
+         */
+        private function normalize_plugin_slug($slug) {
+            if (empty($slug)) {
+                return '';
+            }
+            
+            // Rimuovi suffissi numerici come -1, -2, -1.1, ecc.
+            return preg_replace('/-\d+(\.\d+)*$/', '', $slug);
         }
         
         /**
@@ -170,6 +209,64 @@ if (!class_exists('Marrison_Exporter_Updater')) {
          */
         public function clear_update_cache() {
             delete_transient($this->cache_key);
+        }
+        
+        /**
+         * Fix per mantenere la cartella fissa durante l'aggiornamento
+         * GitHub crea cartelle con nome del repository + versione, noi vogliamo mantenere sempre marrison-exporter
+         */
+        public function fix_package_structure($source, $remote_source, $upgrader, $hook_extra = null) {
+            global $wp_filesystem;
+            
+            // Controlla se questo è il nostro plugin
+            if (!isset($hook_extra['plugin']) || $hook_extra['plugin'] !== $this->plugin_file) {
+                return $source;
+            }
+            
+            // Se la cartella sorgente non contiene il nostro slug, non fare nulla
+            if (strpos($source, $this->plugin_slug) === false) {
+                return $source;
+            }
+            
+            // Ottieni la struttura delle directory
+            $source_files = list_files($source, true);
+            $found_plugin_file = false;
+            
+            // Cerca il file principale del plugin
+            foreach ($source_files as $file) {
+                if (basename($file) === 'marrison-exporter.php') {
+                    $found_plugin_file = true;
+                    break;
+                }
+            }
+            
+            if (!$found_plugin_file) {
+                return $source;
+            }
+            
+            // Trova la directory principale del plugin
+            $plugin_dir = false;
+            foreach ($source_files as $file) {
+                if (basename($file) === 'marrison-exporter.php') {
+                    $plugin_dir = dirname($file);
+                    break;
+                }
+            }
+            
+            if ($plugin_dir && $plugin_dir !== $source) {
+                // Se il plugin è in una sottocartella, sposta tutto nella radice
+                $destination = trailingslashit(dirname($source)) . basename($plugin_dir);
+                
+                if ($wp_filesystem->move($plugin_dir, $destination)) {
+                    // Rimuovi la vecchia cartella se è vuota
+                    if (is_dir($source)) {
+                        $wp_filesystem->delete($source, true);
+                    }
+                    return $destination;
+                }
+            }
+            
+            return $source;
         }
     }
 }
