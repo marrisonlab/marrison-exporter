@@ -3,21 +3,23 @@
  * Plugin Name: Marrison Exporter
  * Plugin URI: https://marrison.com/
  * Description: Plugin per esportare gli ordini di WooCommerce in formato CSV con selezione di date e colonne.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Marrison
  * Author URI: https://marrison.com/
  * License: GPL v2 or later
  * Text Domain: marrison-exporter
  * Domain Path: /languages
+ * Requires at least: 5.0
+ * Requires PHP: 7.4
  * WC requires at least: 3.0
- * WC tested up to: 8.0
+ * WC tested up to: 9.0
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MARRISON_EXPORTER_VERSION', '1.0.0');
+define('MARRISON_EXPORTER_VERSION', '1.1.0');
 define('MARRISON_EXPORTER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MARRISON_EXPORTER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -27,6 +29,19 @@ class Marrison_Exporter {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('admin_init', array($this, 'handle_export'));
+        
+        // Dichiara compatibilità con WooCommerce HPOS
+        add_action('before_woocommerce_init', array($this, 'declare_wc_compatibility'));
+    }
+    
+    /**
+     * Dichiara compatibilità con WooCommerce HPOS (High-Performance Order Storage)
+     */
+    public function declare_wc_compatibility() {
+        if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('cart_checkout_blocks', __FILE__, true);
+        }
     }
     
     public function add_admin_menu() {
@@ -60,185 +75,485 @@ class Marrison_Exporter {
             return;
         }
         
-        wp_enqueue_style('jquery-ui-datepicker');
         wp_enqueue_script('jquery-ui-datepicker');
+        wp_enqueue_style('marrison-exporter-admin', MARRISON_EXPORTER_PLUGIN_URL . 'assets/css/admin-style.css', array(), MARRISON_EXPORTER_VERSION);
         
         wp_add_inline_style('jquery-ui-datepicker', '
+            /* Stile principale datepicker */
             .ui-datepicker { 
-                z-index: 1000 !important; 
-                background: #fff !important;
-                border: 1px solid #ddd !important;
-                border-radius: 4px !important;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+                z-index: 9999 !important; 
+                background: #ffffff !important;
+                border: 1px solid #c3c4c7 !important;
+                border-radius: 8px !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                font-size: 13px !important;
+                padding: 0 !important;
+                margin-top: 2px !important;
             }
+            
+            /* Header datepicker */
             .ui-datepicker-header {
-                background: #f8f9fa !important;
+                background: #f6f7f7 !important;
                 border: none !important;
-                border-radius: 4px 4px 0 0 !important;
-                color: #333 !important;
+                border-radius: 8px 8px 0 0 !important;
+                color: #1d2327 !important;
+                font-weight: 600 !important;
+                padding: 12px 16px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
             }
+            
             .ui-datepicker-title {
-                color: #333 !important;
+                color: #1d2327 !important;
+                font-size: 14px !important;
+                font-weight: 600 !important;
+                margin: 0 !important;
             }
+            
+            .ui-datepicker-title select {
+                background: #ffffff !important;
+                border: 1px solid #c3c4c7 !important;
+                border-radius: 4px !important;
+                color: #1d2327 !important;
+                padding: 4px 8px !important;
+                font-size: 13px !important;
+                margin: 0 4px !important;
+                cursor: pointer !important;
+                -webkit-appearance: menulist !important;
+                -moz-appearance: menulist !important;
+                appearance: menulist !important;
+            }
+            
+            .ui-datepicker-title select option {
+                background: #ffffff !important;
+                color: #1d2327 !important;
+                padding: 4px 8px !important;
+            }
+            
+            /* Fix per tutti i select */
+            select {
+                background: #ffffff !important;
+                color: #1d2327 !important;
+            }
+            
+            select option {
+                background: #ffffff !important;
+                color: #1d2327 !important;
+            }
+            
+            /* Calendario */
             .ui-datepicker-calendar {
-                background: #fff !important;
-                color: #333 !important;
-            }
-            .ui-datepicker th {
-                background: #f1f1f1 !important;
-                color: #333 !important;
+                background: #ffffff !important;
+                color: #1d2327 !important;
                 border: none !important;
+                margin: 0 !important;
             }
+            
+            /* Giorni della settimana */
+            .ui-datepicker th {
+                background: #f6f7f7 !important;
+                color: #646970 !important;
+                border: none !important;
+                font-weight: 600 !important;
+                font-size: 11px !important;
+                text-transform: uppercase !important;
+                padding: 8px 4px !important;
+                text-align: center !important;
+            }
+            
+            /* Celle giorni */
             .ui-datepicker td {
-                background: #fff !important;
-                border: 1px solid #eee !important;
+                background: #ffffff !important;
+                border: 1px solid #f0f0f1 !important;
+                padding: 0 !important;
+                text-align: center !important;
             }
+            
+            /* Link giorni */
             .ui-datepicker td a {
                 color: #0073aa !important;
-                background: #fff !important;
+                background: #ffffff !important;
                 border: none !important;
+                border-radius: 4px !important;
+                display: block !important;
+                padding: 8px !important;
+                text-decoration: none !important;
+                font-weight: 500 !important;
+                transition: all 0.2s ease !important;
             }
+            
             .ui-datepicker td a:hover {
                 background: #0073aa !important;
-                color: #fff !important;
+                color: #ffffff !important;
+                transform: scale(1.05) !important;
             }
+            
+            /* Giorno corrente */
             .ui-datepicker td.ui-datepicker-current-day a {
                 background: #0073aa !important;
-                color: #fff !important;
+                color: #ffffff !important;
+                font-weight: 600 !important;
+                box-shadow: 0 2px 4px rgba(0,115,170,0.3) !important;
             }
+            
+            /* Oggi */
             .ui-datepicker td.ui-datepicker-today a {
-                background: #f8f9fa !important;
+                background: #f6f7f7 !important;
                 color: #0073aa !important;
-                font-weight: bold !important;
+                font-weight: 600 !important;
+                border: 2px solid #0073aa !important;
             }
+            
+            .ui-datepicker td.ui-datepicker-today a:hover {
+                background: #0073aa !important;
+                color: #ffffff !important;
+            }
+            
+            /* Freccine navigazione */
             .ui-datepicker-prev, .ui-datepicker-next {
-                background: #f8f9fa !important;
-                border: 1px solid #ddd !important;
-                color: #333 !important;
+                background: #ffffff !important;
+                border: 1px solid #c3c4c7 !important;
+                color: #1d2327 !important;
+                width: 32px !important;
+                height: 32px !important;
+                border-radius: 50% !important;
+                cursor: pointer !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                transition: all 0.2s ease !important;
+                position: relative !important;
             }
+            
             .ui-datepicker-prev:hover, .ui-datepicker-next:hover {
-                background: #e9ecef !important;
+                background: #f6f7f7 !important;
+                transform: scale(1.1) !important;
             }
+            
             .ui-datepicker-prev span, .ui-datepicker-next span {
-                color: #333 !important;
+                color: #1d2327 !important;
+                font-size: 0 !important;
+                position: absolute !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) !important;
             }
+            
+            .ui-datepicker-prev span:before {
+                content: "‹" !important;
+                font-size: 18px !important;
+                color: #1d2327 !important;
+            }
+            
+            .ui-datepicker-next span:before {
+                content: "›" !important;
+                font-size: 18px !important;
+                color: #1d2327 !important;
+            }
+            
+            /* Pulsante chiudi */
             .ui-datepicker button.ui-datepicker-close {
                 background: #0073aa !important;
-                color: #fff !important;
+                color: #ffffff !important;
                 border: none !important;
-                border-radius: 3px !important;
-                padding: 5px 10px !important;
+                border-radius: 4px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: 500 !important;
+                cursor: pointer !important;
+                transition: all 0.2s ease !important;
+                margin: 8px 16px 16px !important;
             }
+            
             .ui-datepicker button.ui-datepicker-close:hover {
                 background: #005a87 !important;
+                transform: translateY(-1px) !important;
+                box-shadow: 0 2px 4px rgba(0,90,135,0.3) !important;
             }
+            
+            /* Input field migliorato */
             .date-range-field { 
-                width: 150px; 
-                padding: 6px 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                background: #fff;
+                width: 160px; 
+                padding: 8px 12px;
+                border: 1px solid #c3c4c7;
+                border-radius: 6px;
+                background: #ffffff;
+                font-size: 13px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                transition: all 0.2s ease;
+                box-sizing: border-box;
             }
+            
             .date-range-field:focus {
                 border-color: #0073aa;
-                box-shadow: 0 0 0 1px #0073aa;
+                box-shadow: 0 0 0 2px rgba(0,115,170,0.2);
+                outline: none;
             }
-            .export-form { margin: 20px 0; }
-            .export-form table { width: 100%; }
-            .export-form td { padding: 10px; }
-            .export-form input[type="checkbox"] { margin-right: 5px; }
-            .export-form .submit { margin-top: 20px; }
-            .column-selection { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; }
+            
+            .date-range-field:hover {
+                border-color: #8c8f94;
+            }
+            
+            /* Placeholder styling */
+            .date-range-field::placeholder {
+                color: #646970;
+                opacity: 0.8;
+            }
+            
+            /* Stile form generale */
+            .export-form { 
+                margin: 20px 0; 
+                background: #ffffff;
+                border: 1px solid #c3c4c7;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            }
+            
+            .export-form table { 
+                width: 100%; 
+                border-collapse: collapse;
+            }
+            
+            .export-form td { 
+                padding: 16px 12px; 
+                vertical-align: top;
+            }
+            
+            .export-form th {
+                text-align: left;
+                font-weight: 600;
+                color: #1d2327;
+                padding: 16px 12px 16px 0;
+                width: 200px;
+            }
+            
+            .export-form input[type="checkbox"] { 
+                margin-right: 8px; 
+                transform: scale(1.1);
+            }
+            
+            .export-form .submit { 
+                margin-top: 24px; 
+                padding-top: 20px;
+                border-top: 1px solid #f0f0f1;
+            }
+            
+            .column-selection { 
+                max-height: 320px; 
+                overflow-y: auto; 
+                border: 1px solid #c3c4c7; 
+                padding: 12px; 
+                border-radius: 6px;
+                background: #fafafa;
+            }
+            
+            .column-selection label {
+                display: block;
+                margin-bottom: 6px;
+                padding: 4px 8px;
+                border-radius: 4px;
+                transition: background 0.2s ease;
+                cursor: pointer;
+            }
+            
+            .column-selection label:hover {
+                background: #f0f0f1;
+            }
+            
+            .column-selection input[type="checkbox"] {
+                margin-right: 8px;
+            }
+            
+            /* Stile pulsante primario */
+            .button.button-primary {
+                background: #0073aa;
+                border: 1px solid #0073aa;
+                color: #ffffff;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 500;
+                transition: all 0.2s ease;
+                box-shadow: 0 1px 2px rgba(0,115,170,0.3);
+            }
+            
+            .button.button-primary:hover {
+                background: #005a87;
+                border-color: #005a87;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0,90,135,0.4);
+            }
+            
+            .button.button-primary:focus {
+                box-shadow: 0 0 0 2px rgba(0,115,170,0.5);
+                outline: none;
+            }
         ');
     }
     
     public function admin_page() {
-        // Mostra avviso se WooCommerce non è attivo
-        if (!class_exists('WooCommerce')) {
-            ?>
-            <div class="wrap">
-                <div class="notice notice-warning">
-                    <p>
-                        <strong><?php _e('Attenzione:', 'marrison-exporter'); ?></strong>
-                        <?php _e('WooCommerce non è attivo. Il plugin funzionerà ma potresti avere funzionalità limitate.', 'marrison-exporter'); ?>
-                    </p>
-                </div>
-            </div>
-            <?php
-        }
-        
-        // Mostra informazioni sulla memoria
-        $memory_limit = ini_get('memory_limit');
-        $memory_usage = memory_get_usage(true);
-        $memory_percent = round(($memory_usage / 1024 / 1024) / (int)$memory_limit * 100, 2);
-        
+        $logo_url = MARRISON_EXPORTER_PLUGIN_URL . 'assets/logo.svg';
         ?>
-        <div class="wrap">
-            <h1><?php _e('Marrison Exporter - Esportazione Ordini WooCommerce', 'marrison-exporter'); ?></h1>
+        <!-- Invisible H1 to catch WordPress notifications -->
+        <h1 class="wp-heading-inline" style="display:none;"></h1>
+        
+        <div class="mmu-header">
+            <div class="mmu-header-title">
+                <div class="mmu-title-text"><?php _e('Marrison Exporter', 'marrison-exporter'); ?></div>
+            </div>
+            <div class="mmu-header-logo">
+                <?php if (file_exists(MARRISON_EXPORTER_PLUGIN_DIR . 'assets/logo.svg')): ?>
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Marrison Logo">
+                <?php endif; ?>
+                <a href="https://marrisonlab.com" target="_blank" class="marrison-link">Powered by Marrisonlab</a>
+            </div>
+        </div>
+        <style>
+            .mmu-header {
+                height: 120px;
+                background: linear-gradient(to top right, #3f2154, #11111e);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0 40px;
+                margin-bottom: 20px;
+                border-radius: 4px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                color: #fff;
+                box-sizing: border-box;
+            }
+            .mmu-header-title .mmu-title-text {
+                color: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 28px !important;
+                font-weight: 600 !important;
+                line-height: 1.2 !important;
+            }
+            .mmu-header-logo {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
+            }
+            .mmu-header-logo img {
+                width: 180px;
+                height: auto;
+                display: block;
+                margin-bottom: 2px;
+            }
+            .marrison-link {
+                color: #fd5ec0 !important;
+                font-size: 11px !important;
+                text-decoration: none !important;
+                font-weight: 400 !important;
+                font-style: italic !important;
+                transition: color 0.2s ease;
+            }
+            .marrison-link:hover {
+                color: #fff !important;
+                text-decoration: underline !important;
+            }
             
-            <div class="notice notice-info">
+            /* Fix footer WordPress */
+            #wpfooter {
+                position: relative !important;
+                margin-top: 40px !important;
+            }
+            
+            #wpbody-content {
+                padding-bottom: 65px !important;
+            }
+            
+            /* Fix date picker z-index e posizionamento */
+            .ui-datepicker {
+                z-index: 99999 !important;
+                position: absolute !important;
+                margin-top: 2px !important;
+            }
+            
+            .ui-datepicker:before,
+            .ui-datepicker:after {
+                display: none !important;
+            }
+        </style>
+        
+        <?php if (!class_exists('WooCommerce')): ?>
+            <div class="notice notice-warning">
                 <p>
-                    <strong><?php _e('Informazioni di sistema:', 'marrison-exporter'); ?></strong><br>
-                    <?php printf(__('Memoria utilizzata: %s (%s%%)', 'marrison-exporter'), 
-                        size_format($memory_usage), $memory_percent); ?><br>
-                    <?php printf(__('Limite memoria: %s', 'marrison-exporter'), $memory_limit); ?>
+                    <strong><?php _e('Attenzione:', 'marrison-exporter'); ?></strong>
+                    <?php _e('WooCommerce non è attivo. Il plugin funzionerà ma potresti avere funzionalità limitate.', 'marrison-exporter'); ?>
                 </p>
             </div>
-            
-            <div class="export-form">
-                <form method="post" action="">
-                    <?php wp_nonce_field('marrison_export_orders', 'marrison_export_nonce'); ?>
-                    
+        <?php endif; ?>
+        
+        <div class="mcu-wrap">
+            <form method="post" action="">
+                <?php wp_nonce_field('marrison_export_orders', 'marrison_export_nonce'); ?>
+                
+                <!-- Card Date Range -->
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-calendar-alt"></span> <?php _e('Periodo di Esportazione', 'marrison-exporter'); ?></h2>
+                    </div>
                     <table class="form-table">
                         <tr>
-                            <th scope="row">
-                                <label><?php _e('Range di Date', 'marrison-exporter'); ?></label>
-                            </th>
+                            <th scope="row"><label for="date_from"><?php _e('Data Inizio', 'marrison-exporter'); ?></label></th>
                             <td>
                                 <input type="text" name="date_from" id="date_from" class="date-range-field" 
-                                       placeholder="<?php _e('Data inizio', 'marrison-exporter'); ?>" 
+                                       placeholder="<?php _e('YYYY-MM-DD', 'marrison-exporter'); ?>" 
                                        value="<?php echo isset($_POST['date_from']) ? esc_attr($_POST['date_from']) : ''; ?>">
-                                
-                                <input type="text" name="date_to" id="date_to" class="date-range-field" 
-                                       placeholder="<?php _e('Data fine', 'marrison-exporter'); ?>" 
-                                       value="<?php echo isset($_POST['date_to']) ? esc_attr($_POST['date_to']) : ''; ?>">
-                                
-                                <p class="description">
-                                    <?php _e('Seleziona un range di date per filtrare gli ordini. Lascia vuoto per esportare tutti gli ordini.', 'marrison-exporter'); ?>
-                                </p>
                             </td>
                         </tr>
-                        
                         <tr>
-                            <th scope="row">
-                                <label><?php _e('Colonne da Esportare', 'marrison-exporter'); ?></label>
-                            </th>
+                            <th scope="row"><label for="date_to"><?php _e('Data Fine', 'marrison-exporter'); ?></label></th>
                             <td>
-                                <div class="column-selection">
-                                    <?php
-                                    $available_columns = $this->get_available_columns();
-                                    $selected_columns = isset($_POST['export_columns']) ? $_POST['export_columns'] : array_keys($available_columns);
-                                    
-                                    foreach ($available_columns as $key => $label) {
-                                        $checked = in_array($key, $selected_columns) ? 'checked' : '';
-                                        echo '<label><input type="checkbox" name="export_columns[]" value="' . esc_attr($key) . '" ' . $checked . '> ' . esc_html($label) . '</label><br>';
-                                    }
-                                    ?>
-                                </div>
-                                
+                                <input type="text" name="date_to" id="date_to" class="date-range-field" 
+                                       placeholder="<?php _e('YYYY-MM-DD', 'marrison-exporter'); ?>" 
+                                       value="<?php echo isset($_POST['date_to']) ? esc_attr($_POST['date_to']) : ''; ?>">
                                 <p class="description">
-                                    <label>
-                                        <input type="checkbox" id="select_all_columns"> 
-                                        <?php _e('Seleziona/Deseleziona tutte', 'marrison-exporter'); ?>
-                                    </label>
+                                    <?php _e('Lascia vuoto per esportare tutti gli ordini senza filtro temporale.', 'marrison-exporter'); ?>
                                 </p>
                             </td>
                         </tr>
+                    </table>
+                </div>
+                
+                <!-- Card Colonne -->
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-list-view"></span> <?php _e('Colonne da Esportare', 'marrison-exporter'); ?></h2>
+                    </div>
+                    <div class="mcu-columns-grid">
+                        <?php
+                        $available_columns = $this->get_available_columns();
+                        $selected_columns = isset($_POST['export_columns']) ? $_POST['export_columns'] : array_keys($available_columns);
                         
+                        foreach ($available_columns as $key => $label) {
+                            $checked = in_array($key, $selected_columns) ? 'checked' : '';
+                            echo '<label><input type="checkbox" name="export_columns[]" value="' . esc_attr($key) . '" ' . $checked . '> ' . esc_html($label) . '</label>';
+                        }
+                        ?>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <label>
+                            <input type="checkbox" id="select_all_columns"> 
+                            <strong><?php _e('Seleziona/Deseleziona tutte', 'marrison-exporter'); ?></strong>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Card Impostazioni -->
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-admin-settings"></span> <?php _e('Impostazioni Avanzate', 'marrison-exporter'); ?></h2>
+                    </div>
+                    <table class="form-table">
                         <tr>
-                            <th scope="row">
-                                <label><?php _e('Dimensione Batch', 'marrison-exporter'); ?></label>
-                            </th>
+                            <th scope="row"><label for="batch_size"><?php _e('Dimensione Batch', 'marrison-exporter'); ?></label></th>
                             <td>
                                 <input type="number" name="batch_size" id="batch_size" value="50" min="10" max="200" step="10" class="small-text">
                                 <p class="description">
@@ -247,16 +562,20 @@ class Marrison_Exporter {
                             </td>
                         </tr>
                     </table>
-                    
-                    <p class="submit">
-                        <input type="submit" name="export_orders" class="button button-primary" 
-                               value="<?php _e('Esporta Ordini in CSV', 'marrison-exporter'); ?>">
-                        <span class="description" style="margin-left: 10px;">
-                            <?php _e('Per grandi quantità di dati, l\'esportazione potrebbe richiedere alcuni minuti.', 'marrison-exporter'); ?>
-                        </span>
+                </div>
+                
+                <!-- Submit Button -->
+                <div style="margin-top: 20px;">
+                    <button type="submit" name="export_orders" class="mcu-button mcu-button-primary">
+                        <span class="dashicons dashicons-download"></span>
+                        <?php _e('Esporta Ordini in CSV', 'marrison-exporter'); ?>
+                    </button>
+                    <p class="description" style="margin-top: 10px;">
+                        <?php _e('Per grandi quantità di dati, l\'esportazione potrebbe richiedere alcuni minuti.', 'marrison-exporter'); ?>
                     </p>
-                </form>
-            </div>
+                </div>
+            </form>
+        </div>
             
             <script>
             jQuery(document).ready(function($) {
@@ -533,6 +852,9 @@ class Marrison_Exporter {
 // Initialize plugin
 new Marrison_Exporter();
 
+// Initialize updater
+require_once MARRISON_EXPORTER_PLUGIN_DIR . 'includes/class-updater.php';
+
 // Check if WooCommerce is active
 function marrison_exporter_check_woocommerce() {
     if (!class_exists('WooCommerce')) {
@@ -549,3 +871,8 @@ function marrison_exporter_check_woocommerce() {
 }
 
 register_activation_hook(__FILE__, 'marrison_exporter_check_woocommerce');
+
+// Hook per pulire cache aggiornamenti
+register_deactivation_hook(__FILE__, function() {
+    delete_transient('marrison_exporter_update_info');
+});

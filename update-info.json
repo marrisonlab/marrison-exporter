@@ -1,0 +1,17 @@
+{
+  "name": "Marrison Exporter",
+  "slug": "marrison-exporter",
+  "version": "1.0.0",
+  "author": "Marrison",
+  "author_profile": "https://marrisonlab.com",
+  "homepage": "https://github.com/marrisonlab/marrison-exporter",
+  "requires": "5.0",
+  "tested": "6.4",
+  "requires_php": "7.4",
+  "download_url": "https://github.com/marrisonlab/marrison-exporter/archive/refs/tags/1.0.0.zip",
+  "sections": {
+    "description": "Plugin per esportare gli ordini di WooCommerce in formato CSV con selezione di date e colonne.",
+    "installation": "1. Scarica il file del plugin\n2. Carica la cartella `marrison-exporter` nella directory `/wp-content/plugins/` del tuo sito WordPress\n3. Attiva il plugin dalla pagina \"Plugin\" in WordPress",
+    "changelog": "= 1.0.0 =\n* Release iniziale\n* Esportazione ordini WooCommerce in CSV\n* Selezione range di date\n* Scelta colonne personalizzate\n* Interfaccia admin integrata in WooCommerce\n* Gestione ottimizzata memoria per grandi esportazioni\n* Sistema aggiornamenti automatici da GitHub"
+  }
+}

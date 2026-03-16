@@ -1,0 +1,233 @@
+:root {
+    --mcu-primary: #874abd;
+    --mcu-primary-hover: #fd5ec0;
+    --mcu-secondary: #646970;
+    --mcu-success: #00a32a;
+    --mcu-warning: #dba617;
+    --mcu-danger: #d63638;
+    --mcu-bg: #f0f0f1;
+    --mcu-card-bg: #ffffff;
+    --mcu-text: #3c434a;
+    --mcu-border: #c3c4c7;
+    --mcu-radius: 8px;
+    --mcu-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.mcu-wrap {
+    max-width: 1200px;
+    margin: 20px auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    color: var(--mcu-text);
+}
+
+.mcu-card {
+    background: var(--mcu-card-bg);
+    border-radius: var(--mcu-radius);
+    box-shadow: var(--mcu-shadow);
+    padding: 20px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+
+.mcu-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.mcu-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #f0f0f1;
+    padding-bottom: 10px;
+}
+
+.mcu-card-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcu-card-title .dashicons {
+    color: var(--mcu-primary);
+}
+
+/* Buttons */
+.mcu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: none;
+    font-size: 13px;
+}
+
+.mcu-button-primary {
+    background: var(--mcu-primary);
+    color: white !important;
+}
+
+.mcu-button-primary:hover {
+    background: var(--mcu-primary-hover);
+    color: white !important;
+}
+
+.mcu-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Toggle Switch */
+.mcu-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.mcu-switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mcu-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.mcu-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .mcu-slider {
+  background-color: var(--mcu-primary);
+}
+
+input:focus + .mcu-slider {
+  box-shadow: 0 0 1px var(--mcu-primary);
+}
+
+input:checked + .mcu-slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+/* Column Selection Grid */
+.mcu-columns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.mcu-columns-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f6f7f7;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.mcu-columns-grid label:hover {
+    background: #fff;
+    border-color: var(--mcu-primary);
+}
+
+.mcu-columns-grid input[type="checkbox"] {
+    margin: 0;
+}
+
+/* Datepicker fixes */
+.ui-datepicker {
+    z-index: 9999 !important;
+    background: #ffffff !important;
+    border: 1px solid #c3c4c7 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    padding: 10px !important;
+}
+
+.ui-datepicker-header {
+    background: #f6f7f7 !important;
+    border-radius: 6px !important;
+    padding: 8px !important;
+}
+
+.ui-datepicker select {
+    background: #ffffff !important;
+    border: 1px solid #c3c4c7 !important;
+    border-radius: 4px !important;
+    color: #1d2327 !important;
+    padding: 4px 8px !important;
+}
+
+.ui-datepicker select option {
+    background: #ffffff !important;
+    color: #1d2327 !important;
+}
+
+.ui-datepicker td a {
+    background: #ffffff !important;
+    color: var(--mcu-primary) !important;
+    border-radius: 4px !important;
+}
+
+.ui-datepicker td a:hover {
+    background: var(--mcu-primary) !important;
+    color: #ffffff !important;
+}
+
+.ui-datepicker td.ui-datepicker-current-day a {
+    background: var(--mcu-primary) !important;
+    color: #ffffff !important;
+}
+
+/* Input fields */
+.date-range-field {
+    padding: 8px 12px;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    background: #ffffff;
+    font-size: 13px;
+    width: 160px;
+}
+
+.date-range-field:focus {
+    border-color: var(--mcu-primary);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--mcu-primary);
+}
