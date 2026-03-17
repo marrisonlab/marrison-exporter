@@ -29,9 +29,18 @@ class Marrison_Exporter {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('admin_init', array($this, 'handle_export'));
+        add_action('admin_init', array($this, 'handle_scheduled_settings'));
         
         // Dichiara compatibilità con WooCommerce HPOS
         add_action('before_woocommerce_init', array($this, 'declare_wc_compatibility'));
+        
+        // Registra cron hooks
+        add_action('marrison_exporter_daily_cron', array($this, 'send_daily_export'));
+        add_action('marrison_exporter_weekly_cron', array($this, 'send_weekly_export'));
+        add_action('marrison_exporter_monthly_cron', array($this, 'send_monthly_export'));
+        
+        // Setup cron schedules
+        add_action('init', array($this, 'setup_cron_schedules'));
     }
     
     /**
@@ -45,353 +54,48 @@ class Marrison_Exporter {
     }
     
     public function add_admin_menu() {
-        // Aggiungi menu principale se WooCommerce non è attivo
-        if (!class_exists('WooCommerce')) {
-            add_menu_page(
-                __('Marrison Exporter', 'marrison-exporter'),
-                __('Marrison Exporter', 'marrison-exporter'),
-                'manage_options',
-                'marrison-exporter',
-                array($this, 'admin_page'),
-                'dashicons-export',
-                30
-            );
-        } else {
-            // Aggiungi come submenu di WooCommerce
-            add_submenu_page(
-                'woocommerce',
-                __('Marrison Exporter', 'marrison-exporter'),
-                __('Marrison Exporter', 'marrison-exporter'),
-                'manage_woocommerce',
-                'marrison-exporter',
-                array($this, 'admin_page')
-            );
-        }
+        // Menu principale standalone
+        add_menu_page(
+            __('Marrison Exporter', 'marrison-exporter'),
+            __('Marrison Exporter', 'marrison-exporter'),
+            'manage_options',
+            'marrison-exporter',
+            array($this, 'admin_page'),
+            'dashicons-download',
+            56
+        );
+        
+        // Sottopagina per export manuale
+        add_submenu_page(
+            'marrison-exporter',
+            __('Export Manuale', 'marrison-exporter'),
+            __('Export Manuale', 'marrison-exporter'),
+            'manage_options',
+            'marrison-exporter',
+            array($this, 'admin_page')
+        );
+        
+        // Sottopagina per export schedulati
+        add_submenu_page(
+            'marrison-exporter',
+            __('Export Schedulati', 'marrison-exporter'),
+            __('Export Schedulati', 'marrison-exporter'),
+            'manage_options',
+            'marrison-exporter-scheduled',
+            array($this, 'scheduled_page')
+        );
     }
     
     public function enqueue_admin_scripts($hook) {
-        // Controlla entrambi i possibili hook
-        if ('woocommerce_page_marrison-exporter' !== $hook && 'toplevel_page_marrison-exporter' !== $hook) {
+        // Controlla tutti i possibili hook del plugin
+        if (strpos($hook, 'marrison-exporter') === false) {
             return;
         }
         
         wp_enqueue_script('jquery-ui-datepicker');
         wp_enqueue_style('marrison-exporter-admin', MARRISON_EXPORTER_PLUGIN_URL . 'assets/css/admin-style.css', array(), MARRISON_EXPORTER_VERSION);
         
-        wp_add_inline_style('jquery-ui-datepicker', '
-            /* Stile principale datepicker */
-            .ui-datepicker { 
-                z-index: 9999 !important; 
-                background: #ffffff !important;
-                border: 1px solid #c3c4c7 !important;
-                border-radius: 8px !important;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-                font-size: 13px !important;
-                padding: 0 !important;
-                margin-top: 2px !important;
-            }
-            
-            /* Header datepicker */
-            .ui-datepicker-header {
-                background: #f6f7f7 !important;
-                border: none !important;
-                border-radius: 8px 8px 0 0 !important;
-                color: #1d2327 !important;
-                font-weight: 600 !important;
-                padding: 12px 16px !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: space-between !important;
-            }
-            
-            .ui-datepicker-title {
-                color: #1d2327 !important;
-                font-size: 14px !important;
-                font-weight: 600 !important;
-                margin: 0 !important;
-            }
-            
-            .ui-datepicker-title select {
-                background: #ffffff !important;
-                border: 1px solid #c3c4c7 !important;
-                border-radius: 4px !important;
-                color: #1d2327 !important;
-                padding: 4px 8px !important;
-                font-size: 13px !important;
-                margin: 0 4px !important;
-                cursor: pointer !important;
-                -webkit-appearance: menulist !important;
-                -moz-appearance: menulist !important;
-                appearance: menulist !important;
-            }
-            
-            .ui-datepicker-title select option {
-                background: #ffffff !important;
-                color: #1d2327 !important;
-                padding: 4px 8px !important;
-            }
-            
-            /* Fix per tutti i select */
-            select {
-                background: #ffffff !important;
-                color: #1d2327 !important;
-            }
-            
-            select option {
-                background: #ffffff !important;
-                color: #1d2327 !important;
-            }
-            
-            /* Calendario */
-            .ui-datepicker-calendar {
-                background: #ffffff !important;
-                color: #1d2327 !important;
-                border: none !important;
-                margin: 0 !important;
-            }
-            
-            /* Giorni della settimana */
-            .ui-datepicker th {
-                background: #f6f7f7 !important;
-                color: #646970 !important;
-                border: none !important;
-                font-weight: 600 !important;
-                font-size: 11px !important;
-                text-transform: uppercase !important;
-                padding: 8px 4px !important;
-                text-align: center !important;
-            }
-            
-            /* Celle giorni */
-            .ui-datepicker td {
-                background: #ffffff !important;
-                border: 1px solid #f0f0f1 !important;
-                padding: 0 !important;
-                text-align: center !important;
-            }
-            
-            /* Link giorni */
-            .ui-datepicker td a {
-                color: #0073aa !important;
-                background: #ffffff !important;
-                border: none !important;
-                border-radius: 4px !important;
-                display: block !important;
-                padding: 8px !important;
-                text-decoration: none !important;
-                font-weight: 500 !important;
-                transition: all 0.2s ease !important;
-            }
-            
-            .ui-datepicker td a:hover {
-                background: #0073aa !important;
-                color: #ffffff !important;
-                transform: scale(1.05) !important;
-            }
-            
-            /* Giorno corrente */
-            .ui-datepicker td.ui-datepicker-current-day a {
-                background: #0073aa !important;
-                color: #ffffff !important;
-                font-weight: 600 !important;
-                box-shadow: 0 2px 4px rgba(0,115,170,0.3) !important;
-            }
-            
-            /* Oggi */
-            .ui-datepicker td.ui-datepicker-today a {
-                background: #f6f7f7 !important;
-                color: #0073aa !important;
-                font-weight: 600 !important;
-                border: 2px solid #0073aa !important;
-            }
-            
-            .ui-datepicker td.ui-datepicker-today a:hover {
-                background: #0073aa !important;
-                color: #ffffff !important;
-            }
-            
-            /* Freccine navigazione */
-            .ui-datepicker-prev, .ui-datepicker-next {
-                background: #ffffff !important;
-                border: 1px solid #c3c4c7 !important;
-                color: #1d2327 !important;
-                width: 32px !important;
-                height: 32px !important;
-                border-radius: 50% !important;
-                cursor: pointer !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                transition: all 0.2s ease !important;
-                position: relative !important;
-            }
-            
-            .ui-datepicker-prev:hover, .ui-datepicker-next:hover {
-                background: #f6f7f7 !important;
-                transform: scale(1.1) !important;
-            }
-            
-            .ui-datepicker-prev span, .ui-datepicker-next span {
-                color: #1d2327 !important;
-                font-size: 0 !important;
-                position: absolute !important;
-                top: 50% !important;
-                left: 50% !important;
-                transform: translate(-50%, -50%) !important;
-            }
-            
-            .ui-datepicker-prev span:before {
-                content: "‹" !important;
-                font-size: 18px !important;
-                color: #1d2327 !important;
-            }
-            
-            .ui-datepicker-next span:before {
-                content: "›" !important;
-                font-size: 18px !important;
-                color: #1d2327 !important;
-            }
-            
-            /* Pulsante chiudi */
-            .ui-datepicker button.ui-datepicker-close {
-                background: #0073aa !important;
-                color: #ffffff !important;
-                border: none !important;
-                border-radius: 4px !important;
-                padding: 8px 16px !important;
-                font-size: 13px !important;
-                font-weight: 500 !important;
-                cursor: pointer !important;
-                transition: all 0.2s ease !important;
-                margin: 8px 16px 16px !important;
-            }
-            
-            .ui-datepicker button.ui-datepicker-close:hover {
-                background: #005a87 !important;
-                transform: translateY(-1px) !important;
-                box-shadow: 0 2px 4px rgba(0,90,135,0.3) !important;
-            }
-            
-            /* Input field migliorato */
-            .date-range-field { 
-                width: 160px; 
-                padding: 8px 12px;
-                border: 1px solid #c3c4c7;
-                border-radius: 6px;
-                background: #ffffff;
-                font-size: 13px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                transition: all 0.2s ease;
-                box-sizing: border-box;
-            }
-            
-            .date-range-field:focus {
-                border-color: #0073aa;
-                box-shadow: 0 0 0 2px rgba(0,115,170,0.2);
-                outline: none;
-            }
-            
-            .date-range-field:hover {
-                border-color: #8c8f94;
-            }
-            
-            /* Placeholder styling */
-            .date-range-field::placeholder {
-                color: #646970;
-                opacity: 0.8;
-            }
-            
-            /* Stile form generale */
-            .export-form { 
-                margin: 20px 0; 
-                background: #ffffff;
-                border: 1px solid #c3c4c7;
-                border-radius: 8px;
-                padding: 20px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            }
-            
-            .export-form table { 
-                width: 100%; 
-                border-collapse: collapse;
-            }
-            
-            .export-form td { 
-                padding: 16px 12px; 
-                vertical-align: top;
-            }
-            
-            .export-form th {
-                text-align: left;
-                font-weight: 600;
-                color: #1d2327;
-                padding: 16px 12px 16px 0;
-                width: 200px;
-            }
-            
-            .export-form input[type="checkbox"] { 
-                margin-right: 8px; 
-                transform: scale(1.1);
-            }
-            
-            .export-form .submit { 
-                margin-top: 24px; 
-                padding-top: 20px;
-                border-top: 1px solid #f0f0f1;
-            }
-            
-            .column-selection { 
-                max-height: 320px; 
-                overflow-y: auto; 
-                border: 1px solid #c3c4c7; 
-                padding: 12px; 
-                border-radius: 6px;
-                background: #fafafa;
-            }
-            
-            .column-selection label {
-                display: block;
-                margin-bottom: 6px;
-                padding: 4px 8px;
-                border-radius: 4px;
-                transition: background 0.2s ease;
-                cursor: pointer;
-            }
-            
-            .column-selection label:hover {
-                background: #f0f0f1;
-            }
-            
-            .column-selection input[type="checkbox"] {
-                margin-right: 8px;
-            }
-            
-            /* Stile pulsante primario */
-            .button.button-primary {
-                background: #0073aa;
-                border: 1px solid #0073aa;
-                color: #ffffff;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: 500;
-                transition: all 0.2s ease;
-                box-shadow: 0 1px 2px rgba(0,115,170,0.3);
-            }
-            
-            .button.button-primary:hover {
-                background: #005a87;
-                border-color: #005a87;
-                transform: translateY(-1px);
-                box-shadow: 0 2px 4px rgba(0,90,135,0.4);
-            }
-            
-            .button.button-primary:focus {
-                box-shadow: 0 0 0 2px rgba(0,115,170,0.5);
-                outline: none;
-            }
-        ');
+        wp_add_inline_style('marrison-exporter-admin', '');
     }
     
     public function admin_page() {
@@ -847,6 +551,466 @@ class Marrison_Exporter {
                 return '';
         }
     }
+    
+    /**
+     * Pagina per export schedulati
+     */
+    public function scheduled_page() {
+        $logo_url = MARRISON_EXPORTER_PLUGIN_URL . 'assets/logo.svg';
+        ?>
+        <h1 class="wp-heading-inline" style="display:none;"></h1>
+        
+        <div class="mmu-header">
+            <div class="mmu-header-title">
+                <div class="mmu-title-text"><?php _e('Export Schedulati', 'marrison-exporter'); ?></div>
+            </div>
+            <div class="mmu-header-logo">
+                <?php if (file_exists(MARRISON_EXPORTER_PLUGIN_DIR . 'assets/logo.svg')): ?>
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Marrison Logo">
+                <?php endif; ?>
+                <a href="https://marrisonlab.com" target="_blank" class="marrison-link">Powered by Marrisonlab</a>
+            </div>
+        </div>
+        <style>
+            .mmu-header {
+                height: 120px;
+                background: linear-gradient(to top right, #3f2154, #11111e);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0 40px;
+                margin-bottom: 20px;
+                border-radius: 4px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                color: #fff;
+                box-sizing: border-box;
+            }
+            .mmu-header-title .mmu-title-text {
+                color: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 28px !important;
+                font-weight: 600 !important;
+                line-height: 1.2 !important;
+            }
+            .mmu-header-logo {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
+            }
+            .mmu-header-logo img {
+                width: 180px;
+                height: auto;
+                display: block;
+                margin-bottom: 2px;
+            }
+            .marrison-link {
+                color: #fd5ec0 !important;
+                font-size: 11px !important;
+                text-decoration: none !important;
+                font-weight: 400 !important;
+                font-style: italic !important;
+                transition: color 0.2s ease;
+            }
+            .marrison-link:hover {
+                color: #fff !important;
+                text-decoration: underline !important;
+            }
+            
+            #wpfooter {
+                position: relative !important;
+                margin-top: 40px !important;
+            }
+            
+            #wpbody-content {
+                padding-bottom: 65px !important;
+            }
+        </style>
+        
+        <div class="mcu-wrap">
+            <form method="post" action="">
+                <?php wp_nonce_field('marrison_scheduled_settings', 'marrison_scheduled_nonce'); ?>
+                
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-clock"></span> <?php _e('Configurazione Invio Automatico', 'marrison-exporter'); ?></h2>
+                    </div>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="schedule_enabled"><?php _e('Abilita Invio Automatico', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <label class="mcu-switch">
+                                    <input type="checkbox" name="schedule_enabled" id="schedule_enabled" value="1" <?php checked(get_option('marrison_schedule_enabled', 0), 1); ?>>
+                                    <span class="mcu-slider"></span>
+                                </label>
+                                <p class="description"><?php _e('Attiva per abilitare l\'invio automatico via email.', 'marrison-exporter'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="schedule_frequency"><?php _e('Frequenza', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <select name="schedule_frequency" id="schedule_frequency" class="regular-text">
+                                    <option value="daily" <?php selected(get_option('marrison_schedule_frequency', 'daily'), 'daily'); ?>><?php _e('Giornaliero (ogni giorno alle 7:00)', 'marrison-exporter'); ?></option>
+                                    <option value="weekly" <?php selected(get_option('marrison_schedule_frequency', 'daily'), 'weekly'); ?>><?php _e('Settimanale (ogni lunedì alle 7:00)', 'marrison-exporter'); ?></option>
+                                    <option value="monthly" <?php selected(get_option('marrison_schedule_frequency', 'daily'), 'monthly'); ?>><?php _e('Mensile (primo del mese alle 7:00)', 'marrison-exporter'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <strong><?php _e('Giornaliero:', 'marrison-exporter'); ?></strong> <?php _e('Report del giorno precedente alle 7:00', 'marrison-exporter'); ?><br>
+                                    <strong><?php _e('Settimanale:', 'marrison-exporter'); ?></strong> <?php _e('Report settimana precedente ogni lunedì alle 7:00', 'marrison-exporter'); ?><br>
+                                    <strong><?php _e('Mensile:', 'marrison-exporter'); ?></strong> <?php _e('Report mese precedente il primo del mese alle 7:00', 'marrison-exporter'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="schedule_email"><?php _e('Email Destinatario', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <input type="email" name="schedule_email" id="schedule_email" class="regular-text" value="<?php echo esc_attr(get_option('marrison_schedule_email', get_option('admin_email'))); ?>" required>
+                                <p class="description"><?php _e('Indirizzo email dove ricevere i report automatici.', 'marrison-exporter'); ?></p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-list-view"></span> <?php _e('Colonne da Esportare', 'marrison-exporter'); ?></h2>
+                    </div>
+                    <div class="mcu-columns-grid">
+                        <?php
+                        $available_columns = $this->get_available_columns();
+                        $selected_columns = get_option('marrison_schedule_columns', array_keys($available_columns));
+                        
+                        foreach ($available_columns as $key => $label) {
+                            $checked = in_array($key, $selected_columns) ? 'checked' : '';
+                            echo '<label><input type="checkbox" name="schedule_columns[]" value="' . esc_attr($key) . '" ' . $checked . '> ' . esc_html($label) . '</label>';
+                        }
+                        ?>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <label>
+                            <input type="checkbox" id="select_all_schedule_columns"> 
+                            <strong><?php _e('Seleziona/Deseleziona tutte', 'marrison-exporter'); ?></strong>
+                        </label>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button type="submit" name="save_scheduled_settings" class="mcu-button mcu-button-primary">
+                        <span class="dashicons dashicons-saved"></span>
+                        <?php _e('Salva Impostazioni', 'marrison-exporter'); ?>
+                    </button>
+                </div>
+            </form>
+            
+            <?php if (get_option('marrison_schedule_enabled', 0)): ?>
+            <div class="mcu-card" style="margin-top: 20px;">
+                <div class="mcu-card-header">
+                    <h2 class="mcu-card-title"><span class="dashicons dashicons-info"></span> <?php _e('Stato Schedulazione', 'marrison-exporter'); ?></h2>
+                </div>
+                <table class="form-table">
+                    <tr>
+                        <th><?php _e('Prossimo Invio:', 'marrison-exporter'); ?></th>
+                        <td>
+                            <?php
+                            $frequency = get_option('marrison_schedule_frequency', 'daily');
+                            $cron_hook = 'marrison_exporter_' . $frequency . '_cron';
+                            $next_run = wp_next_scheduled($cron_hook);
+                            if ($next_run) {
+                                echo '<strong>' . date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_run) . '</strong>';
+                            } else {
+                                echo '<em>' . __('Non schedulato', 'marrison-exporter') . '</em>';
+                            }
+                            ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php _e('Frequenza Attiva:', 'marrison-exporter'); ?></th>
+                        <td>
+                            <?php
+                            $frequencies = array(
+                                'daily' => __('Giornaliero', 'marrison-exporter'),
+                                'weekly' => __('Settimanale', 'marrison-exporter'),
+                                'monthly' => __('Mensile', 'marrison-exporter')
+                            );
+                            echo '<strong>' . $frequencies[$frequency] . '</strong>';
+                            ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php _e('Email Destinatario:', 'marrison-exporter'); ?></th>
+                        <td><strong><?php echo esc_html(get_option('marrison_schedule_email')); ?></strong></td>
+                    </tr>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            $('#select_all_schedule_columns').on('change', function() {
+                $('input[name="schedule_columns[]"]').prop('checked', this.checked);
+            });
+        });
+        </script>
+        <?php
+    }
+    
+    /**
+     * Gestisce salvataggio impostazioni schedulazione
+     */
+    public function handle_scheduled_settings() {
+        if (!isset($_POST['save_scheduled_settings']) || !isset($_POST['marrison_scheduled_nonce'])) {
+            return;
+        }
+        
+        if (!wp_verify_nonce($_POST['marrison_scheduled_nonce'], 'marrison_scheduled_settings')) {
+            wp_die(__('Verifica di sicurezza fallita', 'marrison-exporter'));
+        }
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi necessari', 'marrison-exporter'));
+        }
+        
+        $enabled = isset($_POST['schedule_enabled']) ? 1 : 0;
+        $frequency = sanitize_text_field($_POST['schedule_frequency']);
+        $email = sanitize_email($_POST['schedule_email']);
+        $columns = isset($_POST['schedule_columns']) ? array_map('sanitize_text_field', $_POST['schedule_columns']) : array();
+        
+        update_option('marrison_schedule_enabled', $enabled);
+        update_option('marrison_schedule_frequency', $frequency);
+        update_option('marrison_schedule_email', $email);
+        update_option('marrison_schedule_columns', $columns);
+        
+        $this->setup_cron_schedules();
+        
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-success is-dismissible"><p>' . __('Impostazioni salvate!', 'marrison-exporter') . '</p></div>';
+        });
+    }
+    
+    /**
+     * Setup cron schedules
+     */
+    public function setup_cron_schedules() {
+        $enabled = get_option('marrison_schedule_enabled', 0);
+        $frequency = get_option('marrison_schedule_frequency', 'daily');
+        
+        wp_clear_scheduled_hook('marrison_exporter_daily_cron');
+        wp_clear_scheduled_hook('marrison_exporter_weekly_cron');
+        wp_clear_scheduled_hook('marrison_exporter_monthly_cron');
+        
+        if (!$enabled) {
+            return;
+        }
+        
+        $hook = 'marrison_exporter_' . $frequency . '_cron';
+        
+        if (!wp_next_scheduled($hook)) {
+            $next_run = $this->get_next_run_time($frequency);
+            wp_schedule_event($next_run, $frequency === 'daily' ? 'daily' : 'weekly', $hook);
+        }
+    }
+    
+    /**
+     * Calcola prossimo orario esecuzione
+     */
+    private function get_next_run_time($frequency) {
+        $timezone = new DateTimeZone(wp_timezone_string());
+        $now = new DateTime('now', $timezone);
+        
+        switch ($frequency) {
+            case 'daily':
+                $next = new DateTime('tomorrow 07:00:00', $timezone);
+                break;
+                
+            case 'weekly':
+                $next = new DateTime('next monday 07:00:00', $timezone);
+                if ($now->format('N') == 1 && $now->format('H') < 7) {
+                    $next = new DateTime('today 07:00:00', $timezone);
+                }
+                break;
+                
+            case 'monthly':
+                $next = new DateTime('first day of next month 07:00:00', $timezone);
+                if ($now->format('d') == 1 && $now->format('H') < 7) {
+                    $next = new DateTime('today 07:00:00', $timezone);
+                }
+                break;
+                
+            default:
+                $next = new DateTime('tomorrow 07:00:00', $timezone);
+        }
+        
+        return $next->getTimestamp();
+    }
+    
+    /**
+     * Invia export giornaliero
+     */
+    public function send_daily_export() {
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $this->send_scheduled_export($yesterday, $yesterday, 'Giornaliero');
+    }
+    
+    /**
+     * Invia export settimanale
+     */
+    public function send_weekly_export() {
+        $last_monday = date('Y-m-d', strtotime('last monday -7 days'));
+        $last_sunday = date('Y-m-d', strtotime('last sunday'));
+        $this->send_scheduled_export($last_monday, $last_sunday, 'Settimanale');
+    }
+    
+    /**
+     * Invia export mensile
+     */
+    public function send_monthly_export() {
+        $first_day = date('Y-m-01', strtotime('last month'));
+        $last_day = date('Y-m-t', strtotime('last month'));
+        $this->send_scheduled_export($first_day, $last_day, 'Mensile');
+    }
+    
+    /**
+     * Funzione principale invio export schedulato
+     */
+    private function send_scheduled_export($date_from, $date_to, $type) {
+        $email = get_option('marrison_schedule_email');
+        $columns = get_option('marrison_schedule_columns', array_keys($this->get_available_columns()));
+        
+        if (empty($email) || empty($columns)) {
+            return;
+        }
+        
+        $csv_content = $this->generate_csv_content($date_from, $date_to, $columns);
+        
+        if (empty($csv_content)) {
+            return;
+        }
+        
+        $subject = sprintf(__('Report %s Ordini WooCommerce - %s', 'marrison-exporter'), $type, date_i18n(get_option('date_format')));
+        $message = $this->generate_email_body($date_from, $date_to, $type);
+        
+        $upload_dir = wp_upload_dir();
+        $temp_file = $upload_dir['basedir'] . '/marrison-export-' . time() . '.csv';
+        file_put_contents($temp_file, $csv_content);
+        
+        $headers = array('Content-Type: text/html; charset=UTF-8');
+        $sent = wp_mail($email, $subject, $message, $headers, array($temp_file));
+        
+        @unlink($temp_file);
+        
+        if ($sent) {
+            update_option('marrison_last_export_sent', current_time('mysql'));
+        }
+    }
+    
+    /**
+     * Genera contenuto CSV
+     */
+    private function generate_csv_content($date_from, $date_to, $columns) {
+        ob_start();
+        $output = fopen('php://output', 'w');
+        
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        $headers = array();
+        $available_columns = $this->get_available_columns();
+        foreach ($columns as $column) {
+            $headers[] = isset($available_columns[$column]) ? $available_columns[$column] : $column;
+        }
+        fputcsv($output, $headers);
+        
+        $this->export_orders_batch($output, $date_from, $date_to, $columns, 50);
+        
+        fclose($output);
+        return ob_get_clean();
+    }
+    
+    /**
+     * Genera corpo email HTML
+     */
+    private function generate_email_body($date_from, $date_to, $type) {
+        $args = array(
+            'status' => array_keys(wc_get_order_statuses()),
+            'date_created' => $date_from . '...' . $date_to,
+            'limit' => 10,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+        );
+        
+        $orders = wc_get_orders($args);
+        $total_orders = count(wc_get_orders(array_merge($args, array('limit' => -1, 'return' => 'ids'))));
+        
+        ob_start();
+        ?>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(to right, #3f2154, #11111e); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+                .header h1 { margin: 0; font-size: 24px; }
+                .info-box { background: #f6f7f7; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+                .info-box p { margin: 5px 0; }
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                th { background: #874abd; color: white; padding: 12px; text-align: left; }
+                td { padding: 10px; border-bottom: 1px solid #ddd; }
+                tr:hover { background: #f6f7f7; }
+                .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>📊 Report <?php echo esc_html($type); ?> Ordini</h1>
+                </div>
+                
+                <div class="info-box">
+                    <p><strong>Periodo:</strong> <?php echo date_i18n(get_option('date_format'), strtotime($date_from)); ?> - <?php echo date_i18n(get_option('date_format'), strtotime($date_to)); ?></p>
+                    <p><strong>Totale Ordini:</strong> <?php echo $total_orders; ?></p>
+                    <p><strong>Data Generazione:</strong> <?php echo date_i18n(get_option('date_format') . ' ' . get_option('time_format')); ?></p>
+                </div>
+                
+                <h2>Ultimi 10 Ordini</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Data</th>
+                            <th>Cliente</th>
+                            <th>Totale</th>
+                            <th>Stato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($orders as $order): ?>
+                        <tr>
+                            <td>#<?php echo $order->get_order_number(); ?></td>
+                            <td><?php echo $order->get_date_created()->date_i18n(get_option('date_format')); ?></td>
+                            <td><?php echo esc_html($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()); ?></td>
+                            <td><?php echo $order->get_formatted_order_total(); ?></td>
+                            <td><?php echo wc_get_order_status_name($order->get_status()); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                
+                <p><strong>📎 In allegato trovi il file CSV completo con tutti gli ordini del periodo.</strong></p>
+                
+                <div class="footer">
+                    <p>Messaggio automatico generato da Marrison Exporter</p>
+                    <p>Powered by <a href="https://marrisonlab.com" style="color: #874abd;">Marrisonlab</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        <?php
+        return ob_get_clean();
+    }
 }
 
 // Initialize plugin
@@ -875,4 +1039,20 @@ register_activation_hook(__FILE__, 'marrison_exporter_check_woocommerce');
 // Hook per pulire cache aggiornamenti
 register_deactivation_hook(__FILE__, function() {
     delete_transient('marrison_exporter_update_info');
+    
+    // Rimuovi cron schedulati
+    $timestamp = wp_next_scheduled('marrison_exporter_daily_cron');
+    if ($timestamp) {
+        wp_unschedule_event($timestamp, 'marrison_exporter_daily_cron');
+    }
+    
+    $timestamp = wp_next_scheduled('marrison_exporter_weekly_cron');
+    if ($timestamp) {
+        wp_unschedule_event($timestamp, 'marrison_exporter_weekly_cron');
+    }
+    
+    $timestamp = wp_next_scheduled('marrison_exporter_monthly_cron');
+    if ($timestamp) {
+        wp_unschedule_event($timestamp, 'marrison_exporter_monthly_cron');
+    }
 });
