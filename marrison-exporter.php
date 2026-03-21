@@ -3,7 +3,7 @@
  * Plugin Name: Marrison Exporter
  * Plugin URI: https://marrison.com/
  * Description: Plugin per esportare gli ordini di WooCommerce in formato CSV con selezione di date e colonne.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: Marrison
  * Author URI: https://marrison.com/
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MARRISON_EXPORTER_VERSION', '1.2.0');
+define('MARRISON_EXPORTER_VERSION', '1.3.0');
 define('MARRISON_EXPORTER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MARRISON_EXPORTER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -30,6 +30,7 @@ class Marrison_Exporter {
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('admin_init', array($this, 'handle_export'));
         add_action('admin_init', array($this, 'handle_scheduled_settings'));
+        add_action('admin_init', array($this, 'handle_bulk_email'));
         
         // Dichiara compatibilità con WooCommerce HPOS
         add_action('before_woocommerce_init', array($this, 'declare_wc_compatibility'));
@@ -41,6 +42,9 @@ class Marrison_Exporter {
         
         // Setup cron schedules
         add_action('init', array($this, 'setup_cron_schedules'));
+        
+        // AJAX handler for recipients preview
+        add_action('wp_ajax_marrison_preview_recipients', array($this, 'ajax_preview_recipients'));
     }
     
     /**
@@ -51,6 +55,51 @@ class Marrison_Exporter {
             \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
             \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('cart_checkout_blocks', __FILE__, true);
         }
+    }
+
+    private function order_matches_product_filter($order, $product_filter) {
+        $filter = trim((string) $product_filter);
+        if ($filter === '') {
+            return true;
+        }
+
+        $filter_lc = function_exists('mb_strtolower') ? mb_strtolower($filter) : strtolower($filter);
+        $filter_is_numeric = ctype_digit($filter);
+        $filter_product_id = $filter_is_numeric ? absint($filter) : 0;
+
+        foreach ($order->get_items() as $item) {
+            if (!is_a($item, 'WC_Order_Item_Product')) {
+                continue;
+            }
+
+            if ($filter_product_id > 0) {
+                $item_product_id = absint($item->get_product_id());
+                $item_variation_id = absint($item->get_variation_id());
+                if ($item_product_id === $filter_product_id || $item_variation_id === $filter_product_id) {
+                    return true;
+                }
+            }
+
+            $product = $item->get_product();
+            $sku = '';
+            if ($product && is_a($product, 'WC_Product')) {
+                $sku = (string) $product->get_sku();
+            }
+
+            $name = (string) $item->get_name();
+            $sku_lc = function_exists('mb_strtolower') ? mb_strtolower($sku) : strtolower($sku);
+            $name_lc = function_exists('mb_strtolower') ? mb_strtolower($name) : strtolower($name);
+
+            if ($sku !== '' && $sku_lc === $filter_lc) {
+                return true;
+            }
+
+            if ($name !== '' && strpos($name_lc, $filter_lc) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
     
     public function add_admin_menu() {
@@ -84,6 +133,16 @@ class Marrison_Exporter {
             'marrison-exporter-scheduled',
             array($this, 'scheduled_page')
         );
+        
+        // Sottopagina per invio email massivo
+        add_submenu_page(
+            'marrison-exporter',
+            __('Invio Email Massivo', 'marrison-exporter'),
+            __('Invio Email Massivo', 'marrison-exporter'),
+            'manage_options',
+            'marrison-exporter-bulk-email',
+            array($this, 'bulk_email_page')
+        );
     }
     
     public function enqueue_admin_scripts($hook) {
@@ -93,6 +152,11 @@ class Marrison_Exporter {
         }
         
         wp_enqueue_script('jquery-ui-datepicker');
+
+        if (class_exists('WooCommerce')) {
+            wp_enqueue_style('woocommerce_admin_styles');
+            wp_enqueue_script('wc-enhanced-select');
+        }
         wp_enqueue_style('marrison-exporter-admin', MARRISON_EXPORTER_PLUGIN_URL . 'assets/css/admin-style.css', array(), MARRISON_EXPORTER_VERSION);
         
         wp_add_inline_style('marrison-exporter-admin', '');
@@ -223,6 +287,34 @@ class Marrison_Exporter {
                                 </p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row"><label for="product_filter"><?php _e('Filtro Prodotto', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <?php if (class_exists('WooCommerce')): ?>
+                                    <select class="wc-product-search" style="width: 400px;" id="product_filter" name="product_filter"
+                                            data-placeholder="<?php esc_attr_e('Seleziona un prodotto…', 'marrison-exporter'); ?>"
+                                            data-action="woocommerce_json_search_products_and_variations"
+                                            data-allow_clear="true">
+                                        <?php
+                                        $selected_product_id = isset($_POST['product_filter']) ? absint($_POST['product_filter']) : 0;
+                                        if ($selected_product_id > 0) {
+                                            $product = wc_get_product($selected_product_id);
+                                            if ($product && is_a($product, 'WC_Product')) {
+                                                echo '<option value="' . esc_attr($selected_product_id) . '" selected="selected">' . wp_kses_post($product->get_formatted_name()) . '</option>';
+                                            }
+                                        }
+                                        ?>
+                                    </select>
+                                <?php else: ?>
+                                    <input type="text" name="product_filter" id="product_filter" 
+                                           placeholder="<?php _e('ID prodotto', 'marrison-exporter'); ?>" 
+                                           value="<?php echo isset($_POST['product_filter']) ? esc_attr($_POST['product_filter']) : ''; ?>">
+                                <?php endif; ?>
+                                <p class="description">
+                                    <?php _e('Opzionale. Esporta solo gli ordini che contengono il prodotto selezionato.', 'marrison-exporter'); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </table>
                 </div>
                 
@@ -289,6 +381,10 @@ class Marrison_Exporter {
                     changeMonth: true,
                     changeYear: true
                 });
+
+                if ($.fn.wc_product_search) {
+                    $('.wc-product-search').wc_product_search();
+                }
                 
                 // Select all/deselect all columns
                 $('#select_all_columns').on('change', function() {
@@ -343,6 +439,7 @@ class Marrison_Exporter {
         
         $date_from = !empty($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : '';
         $date_to = !empty($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : '';
+        $product_filter = !empty($_POST['product_filter']) ? absint($_POST['product_filter']) : 0;
         $export_columns = isset($_POST['export_columns']) ? array_map('sanitize_text_field', $_POST['export_columns']) : array();
         $batch_size = isset($_POST['batch_size']) ? absint($_POST['batch_size']) : 50;
         
@@ -355,10 +452,10 @@ class Marrison_Exporter {
             wp_die(__('Seleziona almeno una colonna da esportare', 'marrison-exporter'));
         }
         
-        $this->export_orders_to_csv($date_from, $date_to, $export_columns, $batch_size);
+        $this->export_orders_to_csv($date_from, $date_to, $product_filter, $export_columns, $batch_size);
     }
     
-    private function export_orders_to_csv($date_from, $date_to, $columns, $batch_size = 50) {
+    private function export_orders_to_csv($date_from, $date_to, $product_filter, $columns, $batch_size = 50) {
         // Aumenta limite memoria temporaneamente
         @ini_set('memory_limit', '512M');
         @set_time_limit(300); // 5 minuti
@@ -384,13 +481,13 @@ class Marrison_Exporter {
         fputcsv($output, $headers);
         
         // Esporta ordini in batch per evitare esaurimento memoria
-        $this->export_orders_batch($output, $date_from, $date_to, $columns, $batch_size);
+        $this->export_orders_batch($output, $date_from, $date_to, $product_filter, $columns, $batch_size);
         
         fclose($output);
         exit;
     }
     
-    private function export_orders_batch($output, $date_from, $date_to, $columns, $batch_size) {
+    private function export_orders_batch($output, $date_from, $date_to, $product_filter, $columns, $batch_size) {
         $page = 1;
         $has_orders = true;
         
@@ -425,6 +522,10 @@ class Marrison_Exporter {
             
             // Processa questo batch
             foreach ($orders as $order) {
+                if (!empty($product_filter) && !$this->order_matches_product_filter($order, $product_filter)) {
+                    continue;
+                }
+
                 $row = array();
                 
                 foreach ($columns as $column) {
@@ -1010,6 +1111,335 @@ class Marrison_Exporter {
         </html>
         <?php
         return ob_get_clean();
+    }
+    
+    public function bulk_email_page() {
+        $logo_url = MARRISON_EXPORTER_PLUGIN_URL . 'assets/logo.svg';
+        ?>
+        <h1 class="wp-heading-inline" style="display:none;"></h1>
+        
+        <div class="mmu-header">
+            <div class="mmu-header-title">
+                <div class="mmu-title-text"><?php _e('Invio Email Massivo', 'marrison-exporter'); ?></div>
+            </div>
+            <div class="mmu-header-logo">
+                <?php if (file_exists(MARRISON_EXPORTER_PLUGIN_DIR . 'assets/logo.svg')): ?>
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Marrison Logo">
+                <?php endif; ?>
+                <a href="https://marrisonlab.com" target="_blank" class="marrison-link">Powered by Marrisonlab</a>
+            </div>
+        </div>
+        
+        <?php if (!class_exists('WooCommerce')): ?>
+            <div class="notice notice-warning">
+                <p>
+                    <strong><?php _e('Attenzione:', 'marrison-exporter'); ?></strong>
+                    <?php _e('WooCommerce non è attivo. Il plugin funzionerà ma potresti avere funzionalità limitate.', 'marrison-exporter'); ?>
+                </p>
+            </div>
+        <?php endif; ?>
+        
+        <div class="mcu-wrap">
+            <form method="post" action="" id="bulk-email-form">
+                <?php wp_nonce_field('marrison_bulk_email', 'marrison_bulk_email_nonce'); ?>
+                
+                <!-- Card Filtri -->
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-filter"></span> <?php _e('Filtri Destinatari', 'marrison-exporter'); ?></h2>
+                    </div>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="email_date_from"><?php _e('Data Inizio', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <input type="text" name="email_date_from" id="email_date_from" class="date-range-field" 
+                                       placeholder="<?php _e('YYYY-MM-DD', 'marrison-exporter'); ?>" 
+                                       value="<?php echo isset($_POST['email_date_from']) ? esc_attr($_POST['email_date_from']) : ''; ?>">
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="email_date_to"><?php _e('Data Fine', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <input type="text" name="email_date_to" id="email_date_to" class="date-range-field" 
+                                       placeholder="<?php _e('YYYY-MM-DD', 'marrison-exporter'); ?>" 
+                                       value="<?php echo isset($_POST['email_date_to']) ? esc_attr($_POST['email_date_to']) : ''; ?>">
+                                <p class="description">
+                                    <?php _e('Lascia vuoto per includere tutti gli ordini senza filtro temporale.', 'marrison-exporter'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="email_product_filter"><?php _e('Filtro Prodotto', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <?php if (class_exists('WooCommerce')): ?>
+                                    <select class="wc-product-search" style="width: 400px;" id="email_product_filter" name="email_product_filter"
+                                            data-placeholder="<?php esc_attr_e('Seleziona un prodotto…', 'marrison-exporter'); ?>"
+                                            data-action="woocommerce_json_search_products_and_variations"
+                                            data-allow_clear="true">
+                                        <?php
+                                        $selected_product_id = isset($_POST['email_product_filter']) ? absint($_POST['email_product_filter']) : 0;
+                                        if ($selected_product_id > 0) {
+                                            $product = wc_get_product($selected_product_id);
+                                            if ($product && is_a($product, 'WC_Product')) {
+                                                echo '<option value="' . esc_attr($selected_product_id) . '" selected="selected">' . wp_kses_post($product->get_formatted_name()) . '</option>';
+                                            }
+                                        }
+                                        ?>
+                                    </select>
+                                <?php else: ?>
+                                    <input type="text" name="email_product_filter" id="email_product_filter" 
+                                           placeholder="<?php _e('ID prodotto', 'marrison-exporter'); ?>" 
+                                           value="<?php echo isset($_POST['email_product_filter']) ? esc_attr($_POST['email_product_filter']) : ''; ?>">
+                                <?php endif; ?>
+                                <p class="description">
+                                    <?php _e('Opzionale. Invia solo ai clienti che hanno ordinato il prodotto selezionato.', 'marrison-exporter'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <div style="margin-top: 15px; padding: 15px; background: #f0f0f1; border-radius: 4px;">
+                        <button type="button" id="preview-recipients" class="button button-secondary">
+                            <span class="dashicons dashicons-visibility" style="margin-top: 3px;"></span>
+                            <?php _e('Anteprima Destinatari', 'marrison-exporter'); ?>
+                        </button>
+                        <div id="recipients-preview" style="margin-top: 10px; display: none;">
+                            <strong><?php _e('Email trovate:', 'marrison-exporter'); ?></strong>
+                            <div id="recipients-list" style="max-height: 150px; overflow-y: auto; background: white; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 3px;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Card Messaggio -->
+                <div class="mcu-card">
+                    <div class="mcu-card-header">
+                        <h2 class="mcu-card-title"><span class="dashicons dashicons-email"></span> <?php _e('Contenuto Email', 'marrison-exporter'); ?></h2>
+                    </div>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="email_subject"><?php _e('Oggetto', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <input type="text" name="email_subject" id="email_subject" class="regular-text" 
+                                       placeholder="<?php _e('Inserisci l\'oggetto dell\'email', 'marrison-exporter'); ?>" 
+                                       value="<?php echo isset($_POST['email_subject']) ? esc_attr($_POST['email_subject']) : ''; ?>" 
+                                       required>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="email_message"><?php _e('Messaggio', 'marrison-exporter'); ?></label></th>
+                            <td>
+                                <?php
+                                $content = isset($_POST['email_message']) ? wp_kses_post($_POST['email_message']) : '';
+                                wp_editor($content, 'email_message', array(
+                                    'textarea_name' => 'email_message',
+                                    'textarea_rows' => 15,
+                                    'media_buttons' => true,
+                                    'teeny' => false,
+                                    'tinymce' => true,
+                                    'quicktags' => true
+                                ));
+                                ?>
+                                <p class="description">
+                                    <?php _e('Scrivi il messaggio da inviare ai destinatari.', 'marrison-exporter'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <!-- Submit Buttons -->
+                <div style="margin-top: 20px;">
+                    <button type="submit" name="send_test_email" class="button button-secondary" style="margin-right: 10px;">
+                        <span class="dashicons dashicons-admin-users" style="margin-top: 3px;"></span>
+                        <?php _e('Invia Email di Test', 'marrison-exporter'); ?>
+                    </button>
+                    
+                    <button type="submit" name="send_bulk_email" class="mcu-button mcu-button-primary" 
+                            onclick="return confirm('<?php esc_attr_e('Sei sicuro di voler inviare l\'email a tutti i destinatari filtrati?', 'marrison-exporter'); ?>');">
+                        <span class="dashicons dashicons-email-alt"></span>
+                        <?php _e('Invia Email Massiva', 'marrison-exporter'); ?>
+                    </button>
+                    
+                    <p class="description" style="margin-top: 10px;">
+                        <?php _e('L\'email di test verrà inviata al tuo indirizzo email amministratore. L\'invio massivo utilizzerà il campo CCN per privacy.', 'marrison-exporter'); ?>
+                    </p>
+                </div>
+            </form>
+        </div>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            $('#email_date_from, #email_date_to').datepicker({
+                dateFormat: 'yy-mm-dd',
+                changeMonth: true,
+                changeYear: true
+            });
+
+            if ($.fn.wc_product_search) {
+                $('.wc-product-search').wc_product_search();
+            }
+            
+            $('#preview-recipients').on('click', function() {
+                var dateFrom = $('#email_date_from').val();
+                var dateTo = $('#email_date_to').val();
+                var productFilter = $('#email_product_filter').val();
+                
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'marrison_preview_recipients',
+                        date_from: dateFrom,
+                        date_to: dateTo,
+                        product_filter: productFilter,
+                        nonce: '<?php echo wp_create_nonce('marrison_preview_recipients'); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#recipients-list').html('<strong>' + response.data.count + ' email uniche trovate:</strong><br>' + response.data.emails.join('<br>'));
+                            $('#recipients-preview').slideDown();
+                        } else {
+                            alert(response.data.message || 'Errore nel recupero dei destinatari');
+                        }
+                    },
+                    error: function() {
+                        alert('Errore nella richiesta AJAX');
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+    
+    public function handle_bulk_email() {
+        if ((!isset($_POST['send_test_email']) && !isset($_POST['send_bulk_email'])) || !isset($_POST['marrison_bulk_email_nonce'])) {
+            return;
+        }
+        
+        if (!wp_verify_nonce($_POST['marrison_bulk_email_nonce'], 'marrison_bulk_email')) {
+            wp_die(__('Security check failed', 'marrison-exporter'));
+        }
+        
+        $required_capability = class_exists('WooCommerce') ? 'manage_woocommerce' : 'manage_options';
+        if (!current_user_can($required_capability)) {
+            wp_die(__('You do not have sufficient permissions', 'marrison-exporter'));
+        }
+        
+        $date_from = !empty($_POST['email_date_from']) ? sanitize_text_field($_POST['email_date_from']) : '';
+        $date_to = !empty($_POST['email_date_to']) ? sanitize_text_field($_POST['email_date_to']) : '';
+        $product_filter = !empty($_POST['email_product_filter']) ? absint($_POST['email_product_filter']) : 0;
+        $subject = !empty($_POST['email_subject']) ? sanitize_text_field($_POST['email_subject']) : '';
+        $message = !empty($_POST['email_message']) ? wp_kses_post($_POST['email_message']) : '';
+        
+        if (empty($subject) || empty($message)) {
+            add_action('admin_notices', function() {
+                echo '<div class="notice notice-error"><p>' . __('Oggetto e messaggio sono obbligatori.', 'marrison-exporter') . '</p></div>';
+            });
+            return;
+        }
+        
+        $emails = $this->get_filtered_customer_emails($date_from, $date_to, $product_filter);
+        
+        if (empty($emails)) {
+            add_action('admin_notices', function() {
+                echo '<div class="notice notice-warning"><p>' . __('Nessun destinatario trovato con i filtri selezionati.', 'marrison-exporter') . '</p></div>';
+            });
+            return;
+        }
+        
+        if (isset($_POST['send_test_email'])) {
+            $admin_email = get_option('admin_email');
+            $headers = array('Content-Type: text/html; charset=UTF-8');
+            
+            $test_message = '<p><strong>' . __('QUESTA È UN\'EMAIL DI TEST', 'marrison-exporter') . '</strong></p>';
+            $test_message .= '<p>' . sprintf(__('Destinatari trovati: %d email uniche', 'marrison-exporter'), count($emails)) . '</p>';
+            $test_message .= '<hr>';
+            $test_message .= $message;
+            
+            if (wp_mail($admin_email, '[TEST] ' . $subject, $test_message, $headers)) {
+                add_action('admin_notices', function() use ($admin_email, $emails) {
+                    echo '<div class="notice notice-success"><p>' . sprintf(__('Email di test inviata a %s. Destinatari trovati: %d', 'marrison-exporter'), $admin_email, count($emails)) . '</p></div>';
+                });
+            } else {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Errore nell\'invio dell\'email di test.', 'marrison-exporter') . '</p></div>';
+                });
+            }
+        } elseif (isset($_POST['send_bulk_email'])) {
+            $admin_email = get_option('admin_email');
+            $headers = array(
+                'Content-Type: text/html; charset=UTF-8',
+                'Bcc: ' . implode(', ', $emails)
+            );
+            
+            if (wp_mail($admin_email, $subject, $message, $headers)) {
+                add_action('admin_notices', function() use ($emails) {
+                    echo '<div class="notice notice-success"><p>' . sprintf(__('Email inviata con successo a %d destinatari in CCN.', 'marrison-exporter'), count($emails)) . '</p></div>';
+                });
+            } else {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Errore nell\'invio dell\'email massiva.', 'marrison-exporter') . '</p></div>';
+                });
+            }
+        }
+    }
+    
+    private function get_filtered_customer_emails($date_from, $date_to, $product_filter) {
+        $args = array(
+            'status' => array_keys(wc_get_order_statuses()),
+            'limit' => -1,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+        );
+        
+        if (!empty($date_from)) {
+            $args['date_created'] = $date_from . '...';
+        }
+        
+        if (!empty($date_to)) {
+            if (!empty($date_from)) {
+                $args['date_created'] = $date_from . '...' . $date_to;
+            } else {
+                $args['date_created'] = '...' . $date_to;
+            }
+        }
+        
+        $orders = wc_get_orders($args);
+        $emails = array();
+        
+        foreach ($orders as $order) {
+            if (!empty($product_filter) && !$this->order_matches_product_filter($order, $product_filter)) {
+                continue;
+            }
+            
+            $email = $order->get_billing_email();
+            if (!empty($email) && is_email($email)) {
+                $emails[] = strtolower(trim($email));
+            }
+        }
+        
+        return array_unique($emails);
+    }
+    
+    public function ajax_preview_recipients() {
+        check_ajax_referer('marrison_preview_recipients', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti', 'marrison-exporter')));
+        }
+        
+        $date_from = !empty($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : '';
+        $date_to = !empty($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : '';
+        $product_filter = !empty($_POST['product_filter']) ? absint($_POST['product_filter']) : 0;
+        
+        $emails = $this->get_filtered_customer_emails($date_from, $date_to, $product_filter);
+        
+        wp_send_json_success(array(
+            'count' => count($emails),
+            'emails' => $emails
+        ));
     }
 }
 
